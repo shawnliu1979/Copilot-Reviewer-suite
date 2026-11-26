@@ -1,8 +1,8 @@
 ---
 name: shawnliu1979-reviewer
-description: Read-only expert reviewer for any code or documentation change. Returns severity-ranked, actionable findings with file:line, impact, and a concrete fix. Use after every implementation. Never edits files. Owner: shawnliu1979.
+description: "Read-only expert reviewer for any code or documentation change. Returns severity-ranked, actionable findings with file:line, impact, and a concrete fix. Use after every implementation. Never edits files. Owner: shawnliu1979."
 target: github-copilot
-user-invokable: false
+user-invocable: false
 disable-model-invocation: false
 tools: ['read', 'search']
 ---

@@ -1,6 +1,6 @@
 ---
 name: shawnliu1979-implementer
-description: Primary agent for implementing code or documentation changes. Runs the mandatory review loop after every change by delegating to the shawnliu1979-reviewer subagent. Owner: shawnliu1979.
+description: "Primary agent for implementing code or documentation changes. Runs the mandatory review loop after every change by delegating to the shawnliu1979-reviewer subagent. Owner: shawnliu1979."
 target: github-copilot
 skills: ['shawnliu1979-review-loop']
 ---

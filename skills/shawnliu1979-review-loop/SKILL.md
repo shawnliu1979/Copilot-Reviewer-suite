@@ -1,6 +1,6 @@
 ---
 name: shawnliu1979-review-loop
-description: Run after ANY code or documentation change. Delegates a read-only review to the shawnliu1979-reviewer subagent, applies confirmed findings, and re-reviews until REVIEW: PASS or 3 rounds. Use whenever files are created, modified, or deleted, including small edits. Owner: shawnliu1979.
+description: "Run after ANY code or documentation change. Delegates a read-only review to the shawnliu1979-reviewer subagent, applies confirmed findings, and re-reviews until REVIEW: PASS or 3 rounds. Use whenever files are created, modified, or deleted, including small edits. Owner: shawnliu1979."
 argument-hint: '[optional: task summary or changed files]'
 ---
 
