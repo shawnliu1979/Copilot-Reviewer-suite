@@ -94,6 +94,9 @@ chmod +x install.sh       # 只需一次
 6. 检查该次委派的工具活动只有 `read` / `search`，没有 `edit` / `execute`。
 7. 若用户级与项目级都装了同名条目，自定义编辑器会出现重复；只保留一处即可（卸载就是删除对应目录下那 3 个文件）。
 8. 把第 5 节的登记块追加到一个测试项目的根 `README.md`，并把其中一行改成指向真实存在的规约文件；改一处违反它的内容，检查工具活动里 reviewer 确实 `read` 了根 README 与该规约文件、finding 同时引用了变更行与规约条款行。再删掉登记块，确认它不输出任何「未找到规约」之类的内容，verdict 不受影响。
+9. **五要素验收**：故意从委派文本里删掉一个变更文件路径，但任务包里的 `git status --porcelain` 输出仍包含它。reviewer 应据该清单审到它，或明确在 `Unverified` 里指出清单不全 —— 出现「未提及该文件且无说明」即不合格。
+10. **读取预算验收**：检查一次委派的工具活动，`Context:` 行列出的路径数应与实际 `read` 一致，且不含重复路径；总数不超过 12（变更文件本身不计）。
+11. **超时降级验收**：中断一次委派（或在测试项目中把范围放大到超时），确认主 agent 只重试一次、随后把该面记入 `Unverified` 并继续，而不是无界重试或谎报 PASS。
 
 ## 4. 使用方式
 
@@ -114,14 +117,17 @@ chmod +x install.sh       # 只需一次
 ```text
 <!-- BEGIN agent-review-conventions
 # 本项目规约文档索引，供 shawnliu1979-reviewer 读取。
-# 每行格式：<相对仓库根的路径> [| <适用文件 glob，多个用逗号分隔>]
-#   路径段 = 一份规约文档（文件），不会自动展开目录。
-#   glob 段 = 该规约适用于哪些变更文件；省略表示 **（全部变更文件）。
-# 下面三行只是示例：路径、glob、条目数、注释行都可自由增删改，
+# 每行格式：[@instructions|@index] <相对仓库根的路径> [| <适用文件 glob，多个用逗号分隔>]
+#   路径段 = 一份文档（文件），不会自动展开目录。
+#   glob 段 = 该条目适用于哪些变更文件；省略表示 **（全部变更文件）。
+#   @instructions = 规约正文，按条款比对（不带前缀的旧写法等价于此）。
+#   @index        = 文档体系导航，只用于定位，不单独据此出 finding。
+# 下面四行只是示例：路径、glob、条目数、注释行都可自由增删改，
 # 套件不预置任何路径，也不读取本块之外的 README 内容。
 # 删除本块、留空、或只留注释行 = 跳过整个规约检查。
-docs/engineering/CODE_STYLE.md | src/**/*.ts,src/**/*.tsx
-CONTRIBUTING.md
+@instructions docs/engineering/CODE_STYLE.md | src/**/*.ts,src/**/*.tsx
+@instructions CONTRIBUTING.md
+@index docs/README.md | **/*.md
 docs/WRITING_GUIDE.md | **/*.md
 END agent-review-conventions -->
 ```
@@ -136,14 +142,17 @@ END agent-review-conventions -->
 * **块是索引，不是规约本身。** reviewer 只把块内条目当作清单；README 中块外的文字一律不作为规约，仓库里的其它规约文件也不会被主动扫描。它会按清单去 `read` **列出的规约文件正文**，再与变更文件对照——读的是清单指向的内容，不是块本身那几行字。
 * **路径段指向单个文件。** 每行路径段是一份规约文档，不会自动展开目录。若规约分散在某个目录里，请逐行列出；想圈定「适用于哪些变更文件」，用 `|` 后面的 glob 段表达（如 `src/**/*.ts`、`docs/**`），省略等价于 `**`。
 * **块外零读取、缺失即跳过。** 删除整块、留空、或只留 `#` 注释行 → 跳过整个规约检查：不报告缺失、不写入 Unverified、不影响 `REVIEW: PASS`。
+* **块内两类别混用。** `@instructions` 条目是审核标准，违反须引用条款行；`@index` 条目只是文档地图，供 reviewer 顺藤摸瓜找到覆盖变更路径的说明文档，**不单独据此出 finding**。无前缀行按 `@instructions` 处理，旧块无需改写。
 
 | 项 | 规则 |
 |---|---|
 | 位置 | 必须是**工作区根目录**的 `README.md`（回退 `readme.md`）；子目录 README、其它文件名一律不读 |
 | 标记 | 起止为一对 HTML 注释，名字分别是 `BEGIN agent-review-conventions` 与 `END agent-review-conventions`；字面以上方代码块为准（与模板文件一致），必须完全一致、成对出现 |
-| 条目 | 每行一份规约文档：`<相对根的路径> [| <适用文件 glob>]`；路径与 glob 均可自由编辑，模板三行只是示例 |
+| 条目 | 每行一份文档：`[@instructions\|@index] <相对根的路径> [\| <适用文件 glob>]`；前缀与路径、glob 均可自由编辑，模板四行只是示例 |
+| 前缀 | `@instructions` = 规约正文，按条款比对；`@index` = 文档体系导航，只定位不判罚；**无前缀等价于 `@instructions`** |
 | 路径 | 相对仓库根；禁止绝对路径、`~`、`..`；**指向单个文件，不自动展开目录** |
 | glob | 可选，逗号分隔；省略表示 `**`，即对所有变更文件生效；只对**匹配到的变更文件**应用该规约 |
+| 预算 | 块内条目读取计入 reviewer 的 12 次启动读取预算，其中 `@index` 条目最多 3 次 |
 | 关闭 | 整块删除、留空、或只留 `#` 注释行 → 跳过整个规约检查 |
 
 | 根 README 状态 | reviewer 行为 |
@@ -154,7 +163,7 @@ END agent-review-conventions -->
 | 规约与仓库现状冲突 | 报告冲突本身，不单方面裁决谁对 |
 | 规约文件本轮被修改 | 明确标注，不用新写的规则评判未改动的文件 |
 
-两个要点：**不区分对象类型** —— 代码与文档都走这套流程，模板里 `docs/WRITING_GUIDE.md | **/*.md` 就是给文档 review 用的；**只做文本对照** —— reviewer 不能跑 lint / format / build / test，工具链强制的规约由主 agent 在 review 循环之外自行验证。委派协议仍是原来的四要素，主 agent 不需要传任何规约内容。
+两个要点：**不区分对象类型** —— 代码与文档都走这套流程，模板里 `docs/WRITING_GUIDE.md | **/*.md` 就是给文档 review 用的；**只做文本对照** —— reviewer 不能跑 lint / format / build / test，工具链强制的规约由主 agent 在 review 循环之外自行验证。委派协议是五要素，其中规约内容仍由 reviewer 自己按登记块读取，主 agent 只给路径与用户级指令原文。
 
 ## 6. 设计决策与已知限制
 
@@ -169,9 +178,10 @@ END agent-review-conventions -->
 9. **指令是软约束。** 官方原话：*Instructions guide the model. They don't guarantee compliance*。若发现主 agent 跳过 review，用验证步骤 5 的工具活动记录来确认，并在任务 prompt 里显式点名。
 10. 企业托管的 Copilot 策略可能限制自定义 agent 与 skill，若加载失败先查组织策略。
 11. **命名前缀不是装饰。** `name` 是委派的解析键：官方示例用 *"Use the Codebase Researcher subagent..."* 这类按名点名的方式，名字大小写敏感。用户级、工作区级、插件与组织级来源会合并进同一清单，同名条目无法区分，点名可能命中非预期实例。`shawnliu1979-` 取自全局唯一的 GitHub 账号；又因 Skill 的 `name` 受字符集约束且必须与目录名一致，前缀只能用连字符形式。`shawnliu1979-implementer.agent.md` 与 SKILL.md 里的自然语言点名也必须用全名，缩写会让前缀失效。三个 name 长度为 21 / 24 / 24 字符，均在上限内。
-12. **规约检查是索引驱动，不做全仓扫描。** 只认工作区根 `README.md` 里的 `agent-review-conventions` 块，reviewer 不自行搜索 `AGENTS.md` / `copilot-instructions.md` / `CONTRIBUTING.md` / 子目录 README。原因有二：subagent 不自动继承项目指令（`include-custom-instructions` 运行时不转发），而让模型自行判断「哪些文件算规约」既不稳定又吃上下文；单一登记块把「有没有、在哪、适用谁」变成可显式声明的事实。代价是**未登记即不检查** —— 这是有意的：没有就跳过，不猜、不编造、不降级 verdict。代码与文档一视同仁，不设对象类型开关，委派四要素也不因此增加字段。
+12. **规约检查是索引驱动，不做全仓扫描，但允许受控读取指令。** 只认工作区根 `README.md` 里的 `agent-review-conventions` 块，reviewer 不自行 glob `AGENTS.md` / `CONTRIBUTING.md` / 子目录 README。原因：subagent 不自动继承项目指令（`include-custom-instructions` 运行时不转发），让模型自行判断「哪些文件算规约」既不稳定又吃上下文；单一登记块把「有没有、在哪、适用谁」变成可显式声明的事实。为避免 reviewer 无入口乱撞，agent body 内置**上下文启动协议**：固定顺序读取根 README → 登记块 → `@instructions` → `@index`，受 12 次读取预算与「连续 2 次失败即停」约束；读取只用于定位，不扩大 review 范围。**用户级指令位于工作区外，reviewer 读不到，由主 agent 在委派中原样附上。** 代价是**未登记即不检查** —— 这是有意的：没有就跳过，不猜、不编造、不降级 verdict。代码与文档一视同仁，不设对象类型开关。
 13. **登记块只有 README 第 5 节这一份原文；块内容是可编辑数据，不是套件配置。** 套件不再维护独立的模板文件，避免同一字面出现多份副本需要人工同步。登记块**不参与安装**：它是要被追加进项目 README 的内容，放进 `~/.copilot/` 或 `.github/` 都不会被读取。块内每一行的路径、glob、条目数与注释都归项目所有，可随时增删改；reviewer 只消费块内清单，块外文字与其它规约文件一律不读，且 `read` 的目标是清单指向的规约正文而非块本身。路径段不自动展开目录，目录范围请用 glob 段表达。
 14. **文档不写入本机绝对路径。** 所有文件引用均为相对路径（以套件目录为基准）；`~`、`<repo>`、`$REPO_ROOT`、`$COPILOT_HOME` 是抽象占位符或 Copilot 官方规范位置，不代表任何具体机器的目录结构。这样本套件可原样复制、提交进版本库或分享给他人，无需按放置位置改写文档。
+15. **子 agent 超时只能靠运行时配置 + 协议兜底。** Copilot CLI 的 `/subagents` 提供 `timeoutSeconds`、`maxConcurrentSubagents`、`maxTotalSubagents`、`maxAiCredits`，这是 harness 的硬上限，agent body 与 skill 都无法设置；VS Code 侧是否有等价面板未确认，不作承诺。协议层只能做三件事：把单次委派按审查面拆小、以 `REVIEW: PASS` / `REVIEW: FINDINGS (n)` 末行判定是否完成、超时后**只重试一次**并计入 3 轮上限。不要往委派文本里写「请在 N 秒内完成」——模型没有可靠墙钟，写了只占上下文。重试无界会烧穿 `chat.agent.maxRequests`（默认 25）导致整轮被截断。
 
 ## 7. 文件职责一览
 
@@ -180,7 +190,7 @@ END agent-review-conventions -->
 | `install.sh` | 安装脚本。默认用户级，`--project` 切项目级；支持 dry-run / force / help |
 | `agents/shawnliu1979-reviewer.agent.md` | 只读审核者。通用代码 + 文档审核清单、根 README 索引驱动的规约检查、结构化 finding 格式、PASS/FINDINGS 终止标记 |
 | `agents/shawnliu1979-implementer.agent.md` | 主 agent。持有工作树写权限，通过 `skills` 固定加载调用协议 |
-| `skills/shawnliu1979-review-loop/SKILL.md` | 主 agent 如何调用 reviewer：委派参数、结果处置、3 轮上限、护栏 |
+| `skills/shawnliu1979-review-loop/SKILL.md` | 主 agent 如何调用 reviewer：五要素委派包、按审查面拆分、结果与 `Context:` 核验、超时降级、3 轮上限 |
 | README 第 5 节代码块 | 规约登记块原文，也是唯一副本。**不安装**，由用户手工追加到项目根 README；块内路径/glob 可自由编辑 |
 | `LICENSE` | GPL-3.0 官方许可原文（未改动）。全项目适用，分发与修改须遵守其条款 |
 | `.gitignore` | 忽略 macOS 杂项、编辑器临时文件与脚本日志 |

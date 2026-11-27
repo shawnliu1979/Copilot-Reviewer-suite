@@ -25,31 +25,57 @@ Always use the full prefixed name. Do not shorten it to a bare "reviewer" — th
 name is not unique and may resolve to a different agent from a repository or plugin.
 
 Project conventions are the reviewer's own responsibility. It reads the convention
-index in the workspace-root README and only the files listed there. The main agent
-does not supply convention content; the four context items below stay unchanged.
-This applies to code and documentation alike. If the index is absent, the reviewer
+index in the workspace-root README and only the files listed there. You supply
+paths and user-level instruction text, never a summary of the rules — pasting a
+digest makes the reviewer judge your paraphrase instead of the source. This
+applies to code and documentation alike. If the index is absent, the reviewer
 skips convention checking silently — do not treat that as a failed review and do
 not start an extra round because of it.
 
-Every delegation MUST include these four items, because subagent calls are stateless
+Every delegation MUST include these five items, because subagent calls are stateless
 and do not inherit the main conversation:
 
 * **Change summary** — what was changed in this round and why.
 * **Changed files** — explicit paths, including newly created or deleted ones.
+  Derive the list from git (`git status --porcelain`, or
+  `git diff --name-status <base>`), never from memory. Paste the command output.
+  A hand-written list is how files go missing.
 * **Previous findings** — the prior round's findings and, for each, whether it was
   fixed or dismissed with a reason. Write "first round" when there is no prior round.
 * **Scope** — what to review, and what is explicitly out of scope.
+* **Repository context packet** — build it once per task, reuse it every round:
+  * repository root, primary language, package manager;
+  * verified build / test / lint commands and a one-line result summary (the
+    reviewer cannot run them);
+  * for each changed document, the path of the index that lists it;
+  * documentation map: doc root, index entry point, and the 2–5 documents that
+    govern the area being changed;
+  * project instruction paths, plus the **pasted text** of user-level
+    instructions (`~/.copilot/instructions/`), which the reviewer cannot read;
+  * excluded areas the reviewer must not search (`vendor`, `dist`, `build`,
+    generated output, `node_modules`).
 
 Example delegation text:
 
 ```
 Delegate to the shawnliu1979-reviewer subagent. Read-only review, do not edit files.
 Change summary: <...>
-Changed files: <...>
+Changed files: <pasted git status --porcelain>
 Previous findings and disposition: <... / first round>
 Scope: review only these changes; ignore unrelated pre-existing code.
-Return findings in the specified format and end with REVIEW: PASS or REVIEW: FINDINGS (n).
+Repository context packet: <...>
+Return findings in the specified format, include the Context: line, and end with
+REVIEW: PASS or REVIEW: FINDINGS (n).
 ```
+
+## 2.1 One delegation, one review surface
+
+Split by surface, not by file count: correctness, documentation consistency, and
+convention compliance are separate delegations when a change touches all three.
+A single delegation that audits a whole repository is the main cause of timeouts
+and of reads that never converge.
+
+Keep every delegation atomic: one surface, one scope, one pass/fail signal.
 
 ## 3. How to handle the result
 
@@ -65,6 +91,48 @@ Return findings in the specified format and end with REVIEW: PASS or REVIEW: FIN
   its own conversation — subagent views are read-only. Send corrections through the
   next delegation's context instead.
 
+Verify the run actually happened before trusting the verdict:
+
+* The response's last line must be exactly `REVIEW: PASS` or `REVIEW: FINDINGS (n)`.
+  Anything else — empty, truncated, prose only — is an **incomplete run**, not a
+  result. Handle it per §3.1; do not treat it as PASS and do not guess findings.
+* Check the `Context:` line against what the task actually required. If the reviewer
+  was supposed to read a project instruction file or a documentation index and the
+  line does not list it, the run is incomplete for that surface.
+* Complete the check from the delegation's own tool activity, not from the report
+  text. A response that says it read a file is not evidence that it did.
+
+## 3.1 Timeout and incomplete runs
+
+There is no per-call timeout switch in this protocol. Bound the work and make the
+outcome judgeable instead:
+
+* **Hard ceiling (host-side, when available).** In the Copilot CLI, `/subagents`
+  exposes `timeoutSeconds`, `maxConcurrentSubagents`, `maxTotalSubagents`, and
+  `maxAiCredits`. Set `timeoutSeconds` to 180–300 and
+  `maxConcurrentSubagents` to 1 for review work. These are runtime settings, not
+  something this skill or the agent body can set. In VS Code the equivalent panel
+  was not confirmed; do not claim it exists.
+* **Soft ceiling (this protocol).** An incomplete run is one that returns without
+  a verdict line, or one that reports far fewer `Context:` paths than the task
+  required. Treat both identically.
+
+Recovery is bounded and never a loop:
+
+1. **First incomplete run** — re-delegate the same surface once, with the packet
+   unchanged plus a narrowed scope naming the 3–5 files to read and the rest to
+   skip.
+2. **Second incomplete run** — stop that surface. Record it under the final report
+   as `Unverified: review timed out — <surface> not covered`. Move to the next
+   surface. Do not retry with a different model, and do not widen the read budget.
+3. **Count it.** Every re-delegation of §3.1 consumes one of the 3 rounds in §4.
+   A timeout is not a free retry: the whole run shares
+   `chat.agent.maxRequests` (default 25), so unlogged retries truncate the task
+   instead of finishing it.
+
+Do not write time limits into the delegation text. The model has no reliable wall
+clock; a stated deadline only spends context and changes nothing.
+
 ## 4. Termination
 
 Stop when either condition is met:
@@ -74,7 +142,7 @@ Stop when either condition is met:
 
 On hitting the cap, stop editing. Output a short unresolved-items list and state that
 the loop was capped. Do not start a fourth round, do not silently continue, and do
-not claim the change passed review.
+not claim the change passed review. This includes rounds consumed by §3.1 retries.
 
 Be aware that `chat.agent.maxRequests` defaults to **25** for the whole run. A loop
 that thrashes can exhaust this budget and be truncated mid-task. Three rounds is
